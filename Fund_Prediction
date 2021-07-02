@@ -1,0 +1,110 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import requests  # This is for atp requests
+import xlsxwriter
+import math
+import os
+
+stocks = pd.read_csv('sp_500_stocks.csv')
+stocks = pd.DataFrame(stocks)
+
+from secrets import IEX_CLOUD_API_TOKEN
+
+# Look at the API code for one stock
+symbol = 'AAPL'
+api_url = f'https://sandbox.iexapis.com/stable/stock/{symbol}/quote/?token={IEX_CLOUD_API_TOKEN}'
+data = requests.get(api_url).json()
+
+# Create a pandas Dataframe
+my_columns = ['Ticker', 'Stock Price', 'Market Capitalization', 'Number of Shares to Buy']
+
+# Looking at Batch api tickers to pull market data
+def chunks(stocks, n):
+    for i in range(0, len(stocks), n):
+        yield stocks[i:i+n]
+
+symbol_groups = list(chunks(stocks['Ticker'], 100))
+
+symbol_strings = []
+for i in range(0, len(symbol_groups)):
+    symbol_strings.append(','.join(symbol_groups[i]))
+
+final_df = pd.DataFrame(columns = my_columns)
+
+for symbol_string in symbol_strings:
+    batch_api_call_url = f'https://sandbox.iexapis.com/stable/stock/market/batch/?types=quote&symbols={symbol_string}&token={IEX_CLOUD_API_TOKEN}'
+    data = requests.get(batch_api_call_url).json()
+    for symbol in symbol_string.split(','):
+        final_df = final_df.append(
+        pd.Series([symbol,
+            data[symbol]['quote']['latestPrice'],
+            data[symbol]['quote']['marketCap'],
+            'N/A'],
+            index=my_columns),
+            ignore_index = True)
+
+## This method is much faster then doing it one stock at a time
+
+# Now we calcuate the number of shares to buy
+
+#portfolio_size = input('Enter the value of your portfolio: ')
+#try:
+#    val = float(portfolio_size)
+#except ValueError:
+#    print('That is not a number! /nPlease try again')
+#    val = input('Please enter an interger:')
+#    val = float(portfolio_size)
+Value_of_portfolio = 1000000
+
+val = float(Value_of_portfolio)
+position_size = val/len(final_df.index)
+
+# How many shares to get to postion_size in each stock
+for i in range(0, len(final_df.index)):
+    final_df.loc[i,'Number of Shares to Buy'] = math.floor(position_size/final_df.loc[i,'Stock Price'])
+
+#Export to excel
+writer = pd.ExcelWriter('Equal_Weighted_Portfolio.xlsx', engine='xlsxwriter')
+final_df.to_excel(writer, 'Equal_Weighted', index=False)
+
+background_color = '#0a0a23'
+font_color = '#ffffff'
+
+string_format = writer.book.add_format(
+    {
+    'font_color': font_color,
+    'bg_color': background_color,
+    'border': 1
+    }
+)
+dollar_format = writer.book.add_format(
+    {
+    'num_format' : '$0.00',
+    'font_color': font_color,
+    'bg_color': background_color,
+    'border': 1
+    }
+)
+integer_format = writer.book.add_format(
+    {
+    'num_format' : '0',
+    'font_color': font_color,
+    'bg_color': background_color,
+    'border': 1
+    }
+)
+
+# Applying the formatting from above into the .xslx file
+column_formats = {
+    'A':['Ticker', string_format],
+    'B':['Stock Price', dollar_format],
+    'C':['Market Capitalization', dollar_format],
+    'D':['Number of Shares to Buy', integer_format]
+}
+
+for column in column_formats.keys():
+    writer.sheets['Equal_Weighted'].set_column(f'{column}:{column}', 18, string_format)
+    writer.sheets['Equal_Weighted'].write(f'{column}1', column_formats[column][0], column_formats[column][1])
+writer.save()
