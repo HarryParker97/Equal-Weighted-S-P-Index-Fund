@@ -1,0 +1,67 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import requests  # This is for atp requests
+import xlsxwriter
+import math
+import os
+print(os.getcwd())
+
+
+# We need to import list of stocks
+Stocks = pd.read_csv('sp_500_stocks.csv')
+
+# Aquire an API token
+# We will be using the sandbox mode of the API
+# Used for testing if the API works before implementing a real API before the strategy is ready
+from secrets import IEX_CLOUD_API_TOKEN
+
+# Look at the API code for one stock
+symbol = 'AAPL'
+api_url = f'https://sandbox.iexapis.com/stable/stock/{symbol}/quote/?token={IEX_CLOUD_API_TOKEN}'
+data = requests.get(api_url).json()
+#print(data)    # prints a dictionary of all the info for apple
+
+price = data['latestPrice']
+market_cap = data['marketCap']
+
+# Now we have an API Call, we can loop for all values in the S&P
+
+# Create a pandas Dataframe
+my_columns = ['Ticker', 'Stock Price', 'Market Capitalization', 'Number of Shares to Buy']
+final_df = pd.DataFrame(columns = my_columns)
+
+final_df = final_df.append(
+    pd.Series(
+    [
+        symbol,
+        price,
+        market_cap,
+        'N/A'
+    ],
+    index = my_columns
+    ),
+    ignore_index = True
+)
+print(final_df)
+
+# Now we overwrite the df with a for loop with all stocks
+final_df = pd.DataFrame(columns = my_columns)
+for stock in Stocks['Ticker']:
+    api_url = f'https://sandbox.iexapis.com/stable/stock/{stock}/quote/?token={IEX_CLOUD_API_TOKEN}'
+    data = requests.get(api_url).json()
+    final_df = final_df.append(
+        pd.Series(
+        [
+            stock,
+            data['latestPrice'],
+            data['marketCap'],
+            'N/A'
+        ],
+        index = my_columns
+        ),
+    ignore_index = True
+    )
+
+final_df.to_csv("Data.csv")
